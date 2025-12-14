@@ -1,29 +1,494 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Najot Ta'lim Spelling Bee</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
-      body { font-family: 'Nunito', sans-serif; }
-      /* Custom bounce animation delays for the loader */
-      .animation-delay-200 { animation-delay: 0.2s; }
-      .animation-delay-400 { animation-delay: 0.4s; }
+        body { font-family: 'Nunito', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.6); }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        /* Custom Animations */
+        @keyframes fade-in-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in-up { animation: fade-in-up 0.5s ease-out forwards; }
+        .animation-delay-200 { animation-delay: 0.2s; }
+        .animation-delay-400 { animation-delay: 0.4s; }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "@heroicons/react/": "https://esm.sh/@heroicons/react@^2.2.0/"
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
 </head>
-  <body class="bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 text-slate-800 h-screen overflow-hidden selection:bg-indigo-200 selection:text-indigo-900">
-    <div id="root" class="h-full"></div>
-  </body>
+<body class="bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 text-slate-800 h-screen overflow-hidden selection:bg-indigo-200 selection:text-indigo-900">
+
+    <!-- 1. STATIC LOADING SCREEN (Guaranteed Visible on Load) -->
+    <div id="loading-screen" class="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="text-6xl animate-bounce">🐝</div>
+        <h1 class="text-3xl font-extrabold text-indigo-900 mt-6">Yuklanmoqda...</h1>
+        <p class="text-indigo-500 font-medium mt-2">Ilova tayyorlanmoqda</p>
+    </div>
+
+    <!-- 2. APP CONTAINER (Hidden until JS initializes) -->
+    <div id="app" class="hidden h-full flex flex-col relative">
+        
+        <!-- Header -->
+        <div class="fixed top-0 left-0 right-0 z-50 flex justify-center pt-4 px-4 pointer-events-none">
+            <header class="pointer-events-auto w-full max-w-5xl glass shadow-lg rounded-full px-6 py-3 flex justify-between items-center transition-all hover:shadow-xl">
+                <div class="flex items-center gap-2 cursor-pointer" onclick="app.goHome()">
+                    <span class="text-3xl">🐝</span>
+                    <span class="text-xl md:text-2xl font-extrabold text-indigo-600 tracking-tight hidden sm:block">Najot Ta'lim</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button id="audio-btn" onclick="app.toggleSound()" class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center hover:bg-indigo-200 transition-colors shadow-sm">
+                        🔊
+                    </button>
+                    <button onclick="app.goHome()" class="hidden md:flex items-center px-5 py-2 rounded-full font-bold text-sm text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 hover:scale-105 transition-all shadow-sm">
+                        🏠 Bosh Sahifa
+                    </button>
+                </div>
+            </header>
+        </div>
+
+        <!-- Main Content -->
+        <main id="main-view" class="flex-1 overflow-y-auto pt-28 pb-10 px-4 w-full max-w-5xl mx-auto scrollbar-hide">
+            <!-- Content Injected via JS -->
+        </main>
+
+        <!-- Footer -->
+        <footer class="w-full py-6 mt-auto text-center z-40 pb-8">
+            <button id="teacher-nav-btn" onclick="app.setView('teacher')" class="text-sm font-bold text-indigo-300 hover:text-indigo-600 bg-white/50 hover:bg-white px-6 py-2.5 rounded-full mb-4 transition-all shadow-sm">
+                O'qituvchi Paneli
+            </button>
+            <div class="text-gray-400 text-sm font-semibold tracking-wide">
+                Dasturchi: <span class="text-indigo-400">Otabek Bekmirzayev</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 3. ROBUST LOGIC (Single File) -->
+    <script>
+        // --- DATA STORE ---
+        const DB = {
+            classes: [],
+            words: [],
+            soundOn: true,
+            
+            save() {
+                localStorage.setItem('bee_classes', JSON.stringify(this.classes));
+                localStorage.setItem('bee_words', JSON.stringify(this.words));
+                localStorage.setItem('bee_sound', JSON.stringify(this.soundOn));
+            },
+
+            load() {
+                try {
+                    const c = localStorage.getItem('bee_classes');
+                    const w = localStorage.getItem('bee_words');
+                    const s = localStorage.getItem('bee_sound');
+                    
+                    if (c && w) {
+                        this.classes = JSON.parse(c);
+                        this.words = JSON.parse(w);
+                        console.log("Step 2: Data loaded from storage.");
+                    } else {
+                        // AUTO-SEED DEMO DATA
+                        console.log("Step 2: No data found. Seeding DEMO data.");
+                        this.classes = ['1-Sinf (Demo)'];
+                        this.words = [
+                            { id: '1', text: 'Apple', wrong1: 'Epple', wrong2: 'Aplle', classes: ['1-Sinf (Demo)'] },
+                            { id: '2', text: 'School', wrong1: 'Skool', wrong2: 'Scool', classes: ['1-Sinf (Demo)'] }
+                        ];
+                        this.save();
+                    }
+
+                    if (s !== null) this.soundOn = JSON.parse(s);
+                } catch (e) {
+                    console.error("Critical Load Error:", e);
+                    // Fallback to prevent crash
+                    this.classes = ['Demo'];
+                    this.words = [];
+                }
+            }
+        };
+
+        // --- APP CONTROLLER ---
+        const app = {
+            view: 'student',
+            currentClass: null,
+            gameWords: [],
+            wordIndex: 0,
+            
+            init() {
+                console.log("Step 1: Init App");
+                DB.load();
+                // 'this' must refer to app object
+                this.updateSoundIcon();
+                this.render();
+                
+                // Hide Loader
+                setTimeout(() => {
+                    document.getElementById('loading-screen').classList.add('opacity-0', 'pointer-events-none');
+                    document.getElementById('app').classList.remove('hidden');
+                    console.log("Step 3: App Visible");
+                }, 800);
+            },
+
+            toggleSound() {
+                DB.soundOn = !DB.soundOn;
+                DB.save();
+                this.updateSoundIcon();
+            },
+
+            updateSoundIcon() {
+                const btn = document.getElementById('audio-btn');
+                if (!btn) return;
+                btn.innerHTML = DB.soundOn ? '🔊' : '🔇';
+                btn.className = DB.soundOn 
+                    ? "w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center hover:bg-indigo-200 transition-colors shadow-sm"
+                    : "w-10 h-10 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center hover:bg-gray-200 transition-colors shadow-sm";
+            },
+
+            goHome() {
+                this.setView('student');
+            },
+
+            setView(viewName) {
+                this.view = viewName;
+                // Toggle Teacher Button Visibility
+                const tBtn = document.getElementById('teacher-nav-btn');
+                if (tBtn) {
+                    if (viewName === 'teacher') tBtn.classList.add('hidden');
+                    else tBtn.classList.remove('hidden');
+                }
+                this.render();
+            },
+
+            startGame(className) {
+                this.currentClass = className;
+                const classWords = DB.words.filter(w => w.classes.includes(className));
+                if (classWords.length === 0) {
+                    alert("Bu sinfda so'zlar yo'q!");
+                    return;
+                }
+                // Shuffle words
+                this.gameWords = classWords.sort(() => Math.random() - 0.5);
+                this.wordIndex = 0;
+                this.setView('game');
+            },
+
+            // --- RENDERER ---
+            render() {
+                const main = document.getElementById('main-view');
+                if (!main) return;
+                main.innerHTML = '';
+
+                if (this.view === 'student') this.renderStudent(main);
+                else if (this.view === 'teacher') this.renderTeacher(main);
+                else if (this.view === 'game') this.renderGame(main);
+            },
+
+            renderStudent(container) {
+                const title = `
+                    <div class="text-center mb-10 animate-fade-in-up">
+                        <h2 class="text-4xl font-extrabold text-indigo-900 mb-2 drop-shadow-sm">Sinfni Tanlang</h2>
+                        <p class="text-indigo-600 font-semibold text-lg">O'yinni boshlash uchun o'z sinfingizni bosing!</p>
+                    </div>
+                `;
+                
+                let grid = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 animate-fade-in-up animation-delay-200">';
+                if (DB.classes.length === 0) {
+                    grid = `
+                        <div class="flex flex-col items-center justify-center py-20 text-center col-span-full">
+                            <div class="bg-white/60 p-8 rounded-full shadow-xl mb-6 text-7xl animate-bounce">🏫</div>
+                            <h2 class="text-3xl font-extrabold text-indigo-900">Sinflar mavjud emas</h2>
+                        </div>
+                    `;
+                } else {
+                    DB.classes.forEach(cls => {
+                        grid += `
+                            <button onclick="app.startGame('${cls}')" class="group relative bg-white/90 backdrop-blur-sm p-8 rounded-3xl shadow-[0_10px_40px_rgba(8,112,184,0.08)] border border-white/60 hover:border-indigo-300 hover:shadow-[0_20px_50px_rgba(79,70,229,0.15)] transition-all duration-300 ease-out transform hover:-translate-y-2 text-left">
+                                <div class="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-bl-[4rem] rounded-tr-3xl -z-10 opacity-50 group-hover:opacity-100 transition-opacity"></div>
+                                <div class="text-6xl mb-6 transform group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">📚</div>
+                                <h3 class="text-3xl font-extrabold text-gray-800 group-hover:text-indigo-600 transition-colors">${cls}</h3>
+                                <div class="mt-4 inline-flex items-center text-indigo-400 font-bold text-sm group-hover:text-indigo-600">
+                                    Boshlash <span class="ml-2 transform group-hover:translate-x-1 transition-transform">→</span>
+                                </div>
+                            </button>
+                        `;
+                    });
+                }
+                grid += '</div>';
+                container.innerHTML = title + grid;
+            },
+
+            renderTeacher(container) {
+                container.innerHTML = `
+                    <div class="space-y-8 animate-fade-in-up">
+                        <div class="text-center mb-8">
+                            <h1 class="text-3xl font-extrabold text-indigo-900">O'qituvchi Paneli</h1>
+                            <p class="text-indigo-600 font-medium">Sinflar va so'zlarni boshqaring</p>
+                        </div>
+
+                        <!-- 1. Add Class -->
+                        <div class="bg-white/90 backdrop-blur-sm rounded-3xl shadow-lg border border-white/50 p-8">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                                <span class="bg-indigo-100 text-indigo-600 w-8 h-8 flex items-center justify-center rounded-full text-sm">1</span>
+                                Sinf Yaratish
+                            </h2>
+                            <form onsubmit="teacher.addClass(event)" class="flex gap-4">
+                                <input id="new-class-input" type="text" placeholder="Sinf nomi (1-A)" class="flex-1 rounded-2xl border-2 border-gray-200 bg-gray-50 py-4 px-6 font-bold outline-none focus:border-indigo-500">
+                                <button type="submit" class="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-indigo-700 shadow-lg">Yaratish</button>
+                            </form>
+                        </div>
+
+                        <!-- 2. Add Word -->
+                        <div class="bg-white/90 backdrop-blur-sm rounded-3xl shadow-lg border border-white/50 p-8">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                                <span class="bg-purple-100 text-purple-600 w-8 h-8 flex items-center justify-center rounded-full text-sm">2</span>
+                                So'z Qo'shish
+                            </h2>
+                            <form onsubmit="teacher.addWord(event)" class="space-y-6">
+                                <input id="new-word-input" type="text" placeholder="Word (e.g. Apple)" class="w-full rounded-2xl border-2 border-gray-200 bg-gray-50 py-4 px-6 font-bold text-lg outline-none focus:border-indigo-500">
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="class-checkboxes">
+                                    ${DB.classes.map(c => `
+                                        <label class="flex items-center p-3 rounded-xl border cursor-pointer hover:bg-gray-50 bg-white">
+                                            <input type="checkbox" name="class-select" value="${c}" class="mr-3 w-5 h-5 accent-indigo-600">
+                                            <span class="font-bold text-gray-700">${c}</span>
+                                        </label>
+                                    `).join('')}
+                                </div>
+                                <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:scale-[1.01] transition-transform">Saqlash</button>
+                            </form>
+                        </div>
+
+                         <!-- 3. List -->
+                        <div class="bg-white/90 backdrop-blur-sm rounded-3xl shadow-lg border border-white/50 p-8">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Mavjud So'zlar (${DB.words.length})</h2>
+                            <div class="max-h-96 overflow-y-auto">
+                                ${DB.words.slice().reverse().map(w => `
+                                    <div class="flex justify-between items-center p-4 border-b hover:bg-gray-50">
+                                        <div>
+                                            <div class="font-bold text-lg">${w.text}</div>
+                                            <div class="text-xs text-red-400">${w.wrong1}, ${w.wrong2}</div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="text-xs font-bold text-indigo-600 mb-1">${w.classes.join(', ')}</div>
+                                            <button onclick="teacher.deleteWord('${w.id}')" class="text-red-500 text-sm font-bold hover:underline">O'chirish</button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- 4. Data -->
+                         <div class="bg-white/90 backdrop-blur-sm rounded-3xl shadow-lg border border-white/50 p-8 flex gap-4">
+                            <button onclick="teacher.exportData()" class="flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-bold hover:bg-emerald-600">📥 Yuklab Olish</button>
+                            <button onclick="document.getElementById('file-upload').click()" class="flex-1 bg-sky-500 text-white py-4 rounded-2xl font-bold hover:bg-sky-600">📤 Yuklash</button>
+                            <input type="file" id="file-upload" class="hidden" accept=".json" onchange="teacher.importData(this)">
+                        </div>
+                    </div>
+                `;
+            },
+
+            renderGame(container) {
+                const word = this.gameWords[this.wordIndex];
+                // Kawaii Pollinations Prompt
+                const imgUrl = `https://image.pollinations.ai/prompt/cute%20minimalist%20kawaii%20sticker%20of%20${encodeURIComponent(word.text)},%20white%20background,%20thick%20outlines,%20vector?width=300&height=300&nologo=true`;
+
+                container.innerHTML = `
+                    <div class="w-full max-w-3xl mx-auto flex flex-col items-center animate-fade-in-up">
+                        <div class="w-full flex justify-between mb-4 px-2">
+                             <div class="bg-white/60 px-4 py-2 rounded-full text-sm font-bold text-indigo-600 shadow-sm">${this.currentClass}</div>
+                             <div class="bg-white/60 px-4 py-2 rounded-full text-sm font-bold text-gray-500 shadow-sm">${this.wordIndex + 1} / ${this.gameWords.length}</div>
+                        </div>
+
+                        <div class="w-full bg-white/90 backdrop-blur-md rounded-[2.5rem] shadow-[0_20px_50px_rgba(8,112,184,0.15)] overflow-hidden border border-white/60">
+                            <div class="relative w-full h-80 bg-gradient-to-b from-indigo-50/50 to-white/0 flex items-center justify-center p-8">
+                                <div id="game-spinner" class="absolute inset-0 flex flex-col items-center justify-center">
+                                     <div class="flex space-x-2 mb-4">
+                                        <div class="w-5 h-5 bg-indigo-400 rounded-full animate-bounce"></div>
+                                        <div class="w-5 h-5 bg-purple-400 rounded-full animate-bounce animation-delay-200"></div>
+                                        <div class="w-5 h-5 bg-pink-400 rounded-full animate-bounce animation-delay-400"></div>
+                                    </div>
+                                    <p class="text-indigo-300 font-bold tracking-wide animate-pulse">Rasm chizilmoqda...</p>
+                                </div>
+                                <img src="${imgUrl}" onload="game.imageLoaded()" class="w-full h-full object-contain filter drop-shadow-xl transition-all duration-500 opacity-0 scale-95" id="game-image">
+                            </div>
+
+                            <div class="p-8 bg-white" id="game-interaction">
+                                <div class="h-24 flex items-center justify-center text-gray-300 font-bold text-xl animate-pulse">Tayyorlaning...</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        };
+
+        // --- TEACHER LOGIC ---
+        const teacher = {
+            addClass(e) {
+                e.preventDefault();
+                const inp = document.getElementById('new-class-input');
+                const val = inp.value.trim();
+                if (val && !DB.classes.includes(val)) {
+                    DB.classes.push(val);
+                    DB.save();
+                    app.render();
+                }
+                inp.value = '';
+            },
+            addWord(e) {
+                e.preventDefault();
+                const txt = document.getElementById('new-word-input').value.trim();
+                const checks = document.querySelectorAll('input[name="class-select"]:checked');
+                const selected = Array.from(checks).map(c => c.value);
+
+                if (!txt || selected.length === 0) {
+                    alert("So'z va sinf tanlang!");
+                    return;
+                }
+
+                // Phonetic Generator
+                const w1 = txt + (txt.endsWith('e') ? 'a' : 'e'); 
+                const w2 = txt.replace(/[aeiou]/, 'oo'); 
+                
+                DB.words.push({
+                    id: Date.now().toString(),
+                    text: txt,
+                    wrong1: this.generatePhonetic(txt),
+                    wrong2: this.generatePhonetic(txt, true),
+                    classes: selected
+                });
+                DB.save();
+                app.render();
+            },
+            generatePhonetic(word, alt = false) {
+                // Simple heuristics for demo purposes - robustness in single file
+                let res = word;
+                if (alt) res = res.replace('c', 'k').replace('ph', 'f');
+                else res = res.replace('a', 'e').replace('i', 'ee');
+                if (res === word) res = word + (alt ? 's' : 'z');
+                return res;
+            },
+            deleteWord(id) {
+                if(confirm("O'chirasizmi?")) {
+                    DB.words = DB.words.filter(w => w.id !== id);
+                    DB.save();
+                    app.render();
+                }
+            },
+            exportData() {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({classes: DB.classes, words: DB.words}));
+                const node = document.createElement('a');
+                node.setAttribute("href", dataStr);
+                node.setAttribute("download", "bee_backup.json");
+                document.body.appendChild(node);
+                node.click();
+                node.remove();
+            },
+            importData(input) {
+                const file = input.files[0];
+                if(!file) return;
+                const r = new FileReader();
+                r.onload = (e) => {
+                    try {
+                        const d = JSON.parse(e.target.result);
+                        if(d.classes && d.words) {
+                            DB.classes = d.classes;
+                            DB.words = d.words;
+                            DB.save();
+                            app.render();
+                            alert("Yuklandi!");
+                        }
+                    } catch(err) { alert("Xato fayl!"); }
+                };
+                r.readAsText(file);
+            }
+        };
+
+        // --- GAME LOGIC ---
+        const game = {
+            imageLoaded() {
+                const img = document.getElementById('game-image');
+                const spinner = document.getElementById('game-spinner');
+                img.classList.remove('opacity-0', 'scale-95');
+                spinner.classList.add('hidden');
+                
+                // Play Audio
+                if (DB.soundOn) {
+                    const txt = app.gameWords[app.wordIndex].text;
+                    const u = new SpeechSynthesisUtterance(txt);
+                    u.lang = 'en-US';
+                    window.speechSynthesis.speak(u);
+                }
+                
+                // Show Options
+                this.showOptions();
+            },
+            showOptions() {
+                const w = app.gameWords[app.wordIndex];
+                const opts = [w.text, w.wrong1, w.wrong2].sort(() => Math.random() - 0.5);
+                
+                const html = `
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 animate-fade-in-up">
+                        ${opts.map(o => `
+                            <button onclick="game.check('${o}')" class="py-5 px-4 bg-white border-[3px] border-indigo-50 rounded-2xl shadow-sm hover:border-indigo-400 hover:bg-indigo-50/50 text-xl font-extrabold text-slate-700 hover:text-indigo-700 transition-all transform hover:-translate-y-1">
+                                ${o}
+                            </button>
+                        `).join('')}
+                    </div>
+                `;
+                document.getElementById('game-interaction').innerHTML = html;
+            },
+            check(selected) {
+                const correct = app.gameWords[app.wordIndex].text;
+                const box = document.getElementById('game-interaction');
+                
+                if (selected === correct) {
+                    box.innerHTML = `
+                        <div class="text-center animate-fade-in-up">
+                             <div class="mx-auto flex items-center justify-center w-24 h-24 rounded-full bg-green-100 text-green-500 mb-4 animate-bounce">
+                                <span class="text-4xl">✓</span>
+                             </div>
+                             <h3 class="text-4xl font-extrabold text-green-500 mb-2">Barakalla!</h3>
+                             <p class="text-gray-400 text-xl font-bold mb-6">${correct}</p>
+                             <button onclick="game.next()" class="bg-gradient-to-r from-indigo-500 to-blue-500 text-white px-10 py-4 rounded-full font-bold text-xl shadow-lg hover:scale-105 transition-all">Keyingi So'z &rarr;</button>
+                        </div>
+                    `;
+                } else {
+                    box.innerHTML = `
+                        <div class="text-center animate-shake">
+                             <div class="mx-auto flex items-center justify-center w-24 h-24 rounded-full bg-red-100 text-red-500 mb-4">
+                                <span class="text-4xl">✕</span>
+                             </div>
+                             <h3 class="text-4xl font-extrabold text-red-500 mb-2">Oh, yo'q...</h3>
+                             <p class="text-gray-500 text-lg mb-6">To'g'ri javob: <span class="font-extrabold text-indigo-600">${correct}</span></p>
+                             <button onclick="game.next()" class="bg-gray-200 text-gray-600 px-10 py-4 rounded-full font-bold text-xl hover:bg-gray-300 transition-all">Davom etish &rarr;</button>
+                        </div>
+                    `;
+                }
+            },
+            next() {
+                app.wordIndex++;
+                if (app.wordIndex >= app.gameWords.length) {
+                    alert("O'yin tugadi! Qayta boshlanmoqda.");
+                    app.startGame(app.currentClass);
+                } else {
+                    app.render(); // Re-renders game view with next word
+                }
+            }
+        };
+
+        // --- STARTUP ---
+        // FIX: Wrap in anonymous function to preserve 'this' context of app
+        window.onload = () => app.init();
+    </script>
+</body>
 </html>
