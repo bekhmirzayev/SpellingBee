@@ -12,30 +12,110 @@ const STORAGE_KEY_SOUND = 'nt_spelling_bee_sound';
 
 const App: React.FC = () => {
   const [view, setView] = useState<'student' | 'teacher' | 'game'>('student');
+  // Initialize with empty arrays to prevent "map of undefined" errors before effect runs
   const [classes, setClasses] = useState<string[]>([]);
   const [words, setWords] = useState<WordItem[]>([]);
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [isSoundOn, setIsSoundOn] = useState<boolean>(true);
 
-  // Load data on mount
+  // ROBUST INITIALIZATION: Auto-Seed data if LocalStorage is empty (Fixes White Screen)
   useEffect(() => {
-    const loadedClasses = localStorage.getItem(STORAGE_KEY_CLASSES);
-    const loadedWords = localStorage.getItem(STORAGE_KEY_WORDS);
-    const loadedSound = localStorage.getItem(STORAGE_KEY_SOUND);
+    const initializeApp = () => {
+      try {
+        const loadedClassesStr = localStorage.getItem(STORAGE_KEY_CLASSES);
+        const loadedWordsStr = localStorage.getItem(STORAGE_KEY_WORDS);
+        const loadedSoundStr = localStorage.getItem(STORAGE_KEY_SOUND);
 
-    if (loadedClasses) setClasses(JSON.parse(loadedClasses));
-    if (loadedWords) setWords(JSON.parse(loadedWords));
-    if (loadedSound !== null) setIsSoundOn(JSON.parse(loadedSound));
+        let initialClasses: string[] = [];
+        let initialWords: WordItem[] = [];
+        let hasData = false;
+
+        // 1. Safely Parse Classes
+        if (loadedClassesStr) {
+          try {
+            const parsed = JSON.parse(loadedClassesStr);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              initialClasses = parsed;
+              hasData = true;
+            }
+          } catch (e) {
+            console.warn("Failed to parse classes from storage:", e);
+          }
+        }
+
+        // 2. Safely Parse Words
+        if (loadedWordsStr) {
+          try {
+            const parsed = JSON.parse(loadedWordsStr);
+            if (Array.isArray(parsed)) {
+              initialWords = parsed;
+            }
+          } catch (e) {
+            console.warn("Failed to parse words from storage:", e);
+          }
+        }
+
+        // 3. AUTO-SEED DEMO DATA (If no data exists, inject it to prevent blank screen)
+        if (!hasData) {
+          console.log("New deployment detected. Seeding demo data...");
+          
+          initialClasses = ["1-Sinf (Demo)"];
+          initialWords = [
+            {
+              id: "demo_1",
+              text: "Apple",
+              wrongOption1: "Epple",
+              wrongOption2: "Aplle",
+              classes: ["1-Sinf (Demo)"]
+            },
+            {
+              id: "demo_2",
+              text: "School",
+              wrongOption1: "Skool",
+              wrongOption2: "Scool",
+              classes: ["1-Sinf (Demo)"]
+            }
+          ];
+
+          // Save immediately so it persists on reload
+          localStorage.setItem(STORAGE_KEY_CLASSES, JSON.stringify(initialClasses));
+          localStorage.setItem(STORAGE_KEY_WORDS, JSON.stringify(initialWords));
+        }
+
+        // 4. Update State
+        setClasses(initialClasses);
+        setWords(initialWords);
+
+        // 5. Sound Settings
+        if (loadedSoundStr !== null) {
+          try {
+            setIsSoundOn(JSON.parse(loadedSoundStr));
+          } catch (e) { /* ignore */ }
+        }
+
+      } catch (criticalError) {
+        console.error("CRITICAL APP ERROR:", criticalError);
+        // Emergency fallback
+        setClasses(["Demo"]);
+        setWords([]);
+      }
+    };
+
+    initializeApp();
   }, []);
 
-  // Save data effects
+  // Save data effects (Keep these to sync changes made by user)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_CLASSES, JSON.stringify(classes));
+    if (classes.length > 0) { // Only save if we have data (prevents overwriting with empty on initial render)
+      localStorage.setItem(STORAGE_KEY_CLASSES, JSON.stringify(classes));
+    }
   }, [classes]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_WORDS, JSON.stringify(words));
-  }, [words]);
+    if (words.length > 0 || classes.length > 0) {
+      localStorage.setItem(STORAGE_KEY_WORDS, JSON.stringify(words));
+    }
+  }, [words, classes]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SOUND, JSON.stringify(isSoundOn));
