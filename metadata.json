@@ -1,0 +1,5 @@
+{
+  "name": "Najot Ta'lim Spelling Bee",
+  "description": "A robust and fast Spelling Bee application for students and teachers featuring class management, word association, and a synchronized game loop with audio and visual aids.",
+  "requestFramePermissions": []
+}
